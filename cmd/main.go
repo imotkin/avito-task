@@ -36,9 +36,6 @@ var (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	log.Println()
-
 	flag.Parse()
 
 	level := cmp.Or(levels[*logLevel], slog.LevelError)
