@@ -109,8 +109,8 @@ func TestIntegration_BuyProduct(t *testing.T) {
 
 	user := getUser(t, baseURL, token.Token)
 
-	_ = user
-	// check user balance and inventory
+	assert.Equal(t, 920, user.Coins)
+	assert.Contains(t, user.Inventory, "t-shirt")
 }
 
 func createUser(t *testing.T, URL string) string {
