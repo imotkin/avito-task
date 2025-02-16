@@ -1,0 +1,17 @@
+linters:
+  enable:
+    - gocritic
+    - gofmt
+    - goimports
+    - lll
+    - maintidx
+    - misspell
+    - nestif
+    - nilerr
+    - prealloc
+    - reassign
+    - stylecheck
+    - tagalign
+    - tagliatelle
+    - unparam
+    - usestdlibvars
