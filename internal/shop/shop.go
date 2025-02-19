@@ -13,10 +13,11 @@ import (
 type Service struct {
 	logger *slog.Logger
 	repo   Repository
+	auth   auth.Authorizer
 }
 
-func NewService(repo Repository, logger *slog.Logger) *Service {
-	return &Service{repo: repo, logger: logger}
+func NewService(repo Repository, auth auth.Authorizer, logger *slog.Logger) *Service {
+	return &Service{repo: repo, auth: auth, logger: logger}
 }
 
 type Repository interface {

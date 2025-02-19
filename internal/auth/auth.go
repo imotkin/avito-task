@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,13 +10,10 @@ import (
 )
 
 var (
-	TokenJWT *jwtauth.JWTAuth
-	TTL      = time.Hour * 24
+	ErrTokenNotFound   = errors.New("jwt token not found")
+	ErrInvalidUserType = errors.New("failed to cast user id to string")
+	ErrInvalidUUID     = errors.New("failed to parse user id")
 )
-
-func init() {
-	TokenJWT = jwtauth.New("HS256", []byte("secret"), nil)
-}
 
 type LoginData struct {
 	Username string `json:"username"`
@@ -27,11 +24,29 @@ type Token struct {
 	Token string `json:"token"`
 }
 
-func CreateToken(id uuid.UUID, name string) (*Token, error) {
-	_, token, err := TokenJWT.Encode(map[string]any{
+type Authorizer interface {
+	CreateToken(id uuid.UUID, name string) (*Token, error)
+	ParseToken(r *http.Request) (uuid.UUID, error)
+}
+
+type Service struct {
+	auth       *jwtauth.JWTAuth
+	expiration time.Duration
+}
+
+func NewService(auth *jwtauth.JWTAuth, expiration time.Duration) *Service {
+	return &Service{auth: auth, expiration: expiration}
+}
+
+func (s *Service) Auth() *jwtauth.JWTAuth {
+	return s.auth
+}
+
+func (s *Service) CreateToken(id uuid.UUID, name string) (*Token, error) {
+	_, token, err := s.auth.Encode(map[string]any{
 		"user_id":  id,
 		"username": name,
-		"exp":      time.Now().Add(TTL).Unix(),
+		"exp":      time.Now().Add(s.expiration).Unix(),
 	})
 	if err != nil {
 		return nil, err
@@ -40,20 +55,20 @@ func CreateToken(id uuid.UUID, name string) (*Token, error) {
 	return &Token{token}, nil
 }
 
-func ParseToken(r *http.Request) (uuid.UUID, error) {
+func (s *Service) ParseToken(r *http.Request) (uuid.UUID, error) {
 	_, claims, err := jwtauth.FromContext(r.Context())
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("get token from context: %v", err)
+	if err != nil || len(claims) == 0 {
+		return uuid.Nil, ErrTokenNotFound
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		return uuid.Nil, fmt.Errorf("cast id to string: %v", err)
+		return uuid.Nil, ErrInvalidUserType
 	}
 
 	id, err := uuid.Parse(userID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("cast id to string: %v", err)
+		return uuid.Nil, ErrInvalidUUID
 	}
 
 	return id, nil

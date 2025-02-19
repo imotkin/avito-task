@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -56,8 +57,10 @@ func (s *Service) Authorize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	fmt.Println("Attempting to create token with id:", id, "and username:", data.Username)
+	fmt.Printf("%+v", s)
 
-	token, err := auth.CreateToken(id, data.Username)
+	token, err := s.auth.CreateToken(id, data.Username)
 	if err != nil {
 		me.Error(w, r, "failed to create JWT token", http.StatusInternalServerError)
 		return
@@ -68,7 +71,7 @@ func (s *Service) Authorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) UserInfo(w http.ResponseWriter, r *http.Request) {
-	id, err := auth.ParseToken(r)
+	id, err := s.auth.ParseToken(r)
 	if err != nil {
 		me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
 		return
@@ -100,7 +103,7 @@ func (s *Service) BuyProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := auth.ParseToken(r)
+	id, err := s.auth.ParseToken(r)
 	if err != nil {
 		me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
 		return
@@ -119,7 +122,7 @@ func (s *Service) BuyProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) SendCoin(w http.ResponseWriter, r *http.Request) {
-	senderID, err := auth.ParseToken(r)
+	senderID, err := s.auth.ParseToken(r)
 	if err != nil {
 		me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
 		return

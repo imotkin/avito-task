@@ -14,16 +14,20 @@ func TestValidTransfer(t *testing.T) {
 		err      error
 	}{
 		{
-			Transfer{Sender: uuid.New(), Amount: 100, Receiver: uuid.New()},
-			me.ErrInvalidSender,
+			transfer: Transfer{Sender: uuid.New(), Amount: 100, Receiver: uuid.New()},
+			err:      me.ErrInvalidSender,
 		},
 		{
-			Transfer{Receiver: uuid.New(), Amount: 0},
-			me.ErrNullAmount,
+			transfer: Transfer{Receiver: uuid.New(), Amount: 0},
+			err:      me.ErrNullAmount,
 		},
 		{
-			Transfer{Receiver: uuid.Nil},
-			me.ErrEmptyReceiver,
+			transfer: Transfer{Receiver: uuid.Nil},
+			err:      me.ErrEmptyReceiver,
+		},
+		{
+			transfer: Transfer{Receiver: uuid.New(), Amount: 100},
+			err:      nil,
 		},
 	}
 

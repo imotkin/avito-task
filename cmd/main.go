@@ -58,7 +58,11 @@ func main() {
 		log.Fatalf("Failed to run database migrations: %v", err)
 	}
 
-	service := shop.NewService(db, logger)
+	authService := auth.NewService(
+		jwtauth.New("HS256", []byte("secret"), nil), (time.Hour * 24),
+	)
+
+	shopService := shop.NewService(db, authService, logger)
 
 	r := chi.NewRouter()
 
@@ -70,16 +74,16 @@ func main() {
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 
 	r.Group(func(r chi.Router) {
-		r.Use(jwtauth.Verifier(auth.TokenJWT))
+		r.Use(jwtauth.Verifier(authService.Auth()))
 
-		r.Use(jwtauth.Authenticator(auth.TokenJWT))
+		r.Use(jwtauth.Authenticator(authService.Auth()))
 
-		r.Get("/api/info", service.UserInfo)
-		r.Get("/api/buy/{item}", service.BuyProduct)
-		r.Get("/api/sendCoin", service.SendCoin)
+		r.Get("/api/info", shopService.UserInfo)
+		r.Get("/api/buy/{item}", shopService.BuyProduct)
+		r.Get("/api/sendCoin", shopService.SendCoin)
 	})
 
-	r.Post("/api/auth", service.Authorize)
+	r.Post("/api/auth", shopService.Authorize)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
