@@ -1,0 +1,972 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>cmd: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/imotkin/avito-task/cmd/main.go (0.0%)</option>
+				
+				<option value="file1">github.com/imotkin/avito-task/internal/auth/auth.go (93.8%)</option>
+				
+				<option value="file2">github.com/imotkin/avito-task/internal/config/config.go (0.0%)</option>
+				
+				<option value="file3">github.com/imotkin/avito-task/internal/database/database.go (0.0%)</option>
+				
+				<option value="file4">github.com/imotkin/avito-task/internal/migrations/migrations.go (0.0%)</option>
+				
+				<option value="file5">github.com/imotkin/avito-task/internal/myerrors/errors.go (100.0%)</option>
+				
+				<option value="file6">github.com/imotkin/avito-task/internal/shop/handlers.go (34.4%)</option>
+				
+				<option value="file7">github.com/imotkin/avito-task/internal/shop/products.go (100.0%)</option>
+				
+				<option value="file8">github.com/imotkin/avito-task/internal/shop/shop.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "cmp"
+        "context"
+        "errors"
+        "flag"
+        "log"
+        "log/slog"
+        "net/http"
+        "os"
+        "os/signal"
+        "syscall"
+        "time"
+
+        "github.com/imotkin/avito-task/internal/auth"
+        "github.com/imotkin/avito-task/internal/config"
+        "github.com/imotkin/avito-task/internal/database"
+        "github.com/imotkin/avito-task/internal/migrations"
+        "github.com/imotkin/avito-task/internal/shop"
+
+        "github.com/go-chi/chi/v5"
+        "github.com/go-chi/chi/v5/middleware"
+        "github.com/go-chi/jwtauth/v5"
+        "github.com/go-chi/render"
+)
+
+var (
+        logLevel = flag.String("logger", "error", "Set a necessary logger level: info, debug, warn, error")
+        levels   = map[string]slog.Level{
+                "debug": slog.LevelDebug,
+                "info":  slog.LevelInfo,
+                "warn":  slog.LevelWarn,
+                "error": slog.LevelError,
+        }
+)
+
+func main() <span class="cov0" title="0">{
+        flag.Parse()
+
+        level := cmp.Or(levels[*logLevel], slog.LevelError)
+
+        logger := slog.New(slog.NewTextHandler(
+                os.Stdout, &amp;slog.HandlerOptions{
+                        Level: level,
+                },
+        ))
+
+        cfg := config.Load()
+
+        db, err := database.New(cfg)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to connect to the database: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">err = migrations.Up(db.Connection())
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to run database migrations: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">authService := auth.NewService(
+                jwtauth.New("HS256", []byte("secret"), nil), (time.Hour * 24),
+        )
+
+        shopService := shop.NewService(db, authService, logger)
+
+        r := chi.NewRouter()
+
+        r.Use(middleware.RequestID)
+        r.Use(middleware.RealIP)
+        r.Use(middleware.Logger)
+        r.Use(middleware.Recoverer)
+        r.Use(middleware.Timeout(60 * time.Second))
+        r.Use(render.SetContentType(render.ContentTypeJSON))
+
+        r.Group(func(r chi.Router) </span><span class="cov0" title="0">{
+                r.Use(jwtauth.Verifier(authService.Auth()))
+
+                r.Use(jwtauth.Authenticator(authService.Auth()))
+
+                r.Get("/api/info", shopService.UserInfo)
+                r.Get("/api/buy/{item}", shopService.BuyProduct)
+                r.Get("/api/sendCoin", shopService.SendCoin)
+        }</span>)
+
+        <span class="cov0" title="0">r.Post("/api/auth", shopService.Authorize)
+
+        server := &amp;http.Server{
+                Addr:    ":" + cfg.ServerPort,
+                Handler: r,
+        }
+
+        sigs := make(chan os.Signal, 1)
+        signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+        done := make(chan bool, 1)
+
+        go func() </span><span class="cov0" title="0">{
+                log.Printf("Got signal: %v\n", &lt;-sigs)
+
+                ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+                defer cancel()
+
+                err := server.Shutdown(ctx)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Printf("Failed to shutdown HTTP server: %v", err)
+                }</span>
+
+                <span class="cov0" title="0">log.Println("Server HTTP was closed")
+
+                done &lt;- true</span>
+        }()
+
+        <span class="cov0" title="0">go func() </span><span class="cov0" title="0">{
+                log.Printf("Started HTTP server at http://localhost%s", server.Addr)
+
+                err = server.ListenAndServe()
+                if err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) </span><span class="cov0" title="0">{
+                        log.Fatalf("Failed to start HTTP server: %v", err)
+                }</span>
+        }()
+
+        <span class="cov0" title="0">&lt;-done</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package auth
+
+import (
+        "errors"
+        "net/http"
+        "time"
+
+        "github.com/go-chi/jwtauth/v5"
+        "github.com/google/uuid"
+)
+
+var (
+        ErrTokenNotFound   = errors.New("jwt token not found")
+        ErrInvalidUserType = errors.New("failed to cast user id to string")
+        ErrInvalidUUID     = errors.New("failed to parse user id")
+)
+
+type LoginData struct {
+        Username string `json:"username"`
+        Password string `json:"password"`
+}
+
+type Token struct {
+        Token string `json:"token"`
+}
+
+type Authorizer interface {
+        CreateToken(id uuid.UUID, name string) (*Token, error)
+        ParseToken(r *http.Request) (uuid.UUID, error)
+}
+
+type Service struct {
+        auth       *jwtauth.JWTAuth
+        expiration time.Duration
+}
+
+func NewService(auth *jwtauth.JWTAuth, expiration time.Duration) *Service <span class="cov8" title="1">{
+        return &amp;Service{auth: auth, expiration: expiration}
+}</span>
+
+func (s *Service) Auth() *jwtauth.JWTAuth <span class="cov8" title="1">{
+        return s.auth
+}</span>
+
+func (s *Service) CreateToken(id uuid.UUID, name string) (*Token, error) <span class="cov8" title="1">{
+        _, token, err := s.auth.Encode(map[string]any{
+                "user_id":  id,
+                "username": name,
+                "exp":      time.Now().Add(s.expiration).Unix(),
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return &amp;Token{token}, nil</span>
+}
+
+func (s *Service) ParseToken(r *http.Request) (uuid.UUID, error) <span class="cov8" title="1">{
+        _, claims, err := jwtauth.FromContext(r.Context())
+        if err != nil || len(claims) == 0 </span><span class="cov8" title="1">{
+                return uuid.Nil, ErrTokenNotFound
+        }</span>
+
+        <span class="cov8" title="1">userID, ok := claims["user_id"].(string)
+        if !ok </span><span class="cov8" title="1">{
+                return uuid.Nil, ErrInvalidUserType
+        }</span>
+
+        <span class="cov8" title="1">id, err := uuid.Parse(userID)
+        if err != nil </span><span class="cov8" title="1">{
+                return uuid.Nil, ErrInvalidUUID
+        }</span>
+
+        <span class="cov8" title="1">return id, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package config
+
+import (
+        "cmp"
+        "fmt"
+        "os"
+)
+
+type Config struct {
+        User       string
+        Password   string
+        Host       string
+        Port       string
+        Database   string
+        ServerPort string
+}
+
+func (c *Config) DatabaseURL() string <span class="cov0" title="0">{
+        return fmt.Sprintf(
+                "postgres://%s:%s@%s:%s/%s?sslmode=disable",
+                c.User, c.Password, c.Host, c.Port, c.Database,
+        )
+}</span>
+
+func Load() *Config <span class="cov0" title="0">{
+        return &amp;Config{
+                User:       cmp.Or(os.Getenv("DATABASE_USER"), "postgres"),
+                Password:   cmp.Or(os.Getenv("DATABASE_PASSWORD"), "postgres"),
+                Host:       cmp.Or(os.Getenv("DATABASE_HOST"), "localhost"),
+                Port:       cmp.Or(os.Getenv("DATABASE_PORT"), "5432"),
+                Database:   cmp.Or(os.Getenv("DATABASE_NAME"), "shop"),
+                ServerPort: cmp.Or(os.Getenv("SERVER_PORT"), "8080"),
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package database
+
+import (
+        "context"
+        "crypto/sha256"
+        "database/sql"
+        "encoding/base64"
+        "errors"
+        "fmt"
+
+        "github.com/imotkin/avito-task/internal/auth"
+        "github.com/imotkin/avito-task/internal/config"
+        me "github.com/imotkin/avito-task/internal/myerrors"
+        "github.com/imotkin/avito-task/internal/shop"
+        "golang.org/x/crypto/pbkdf2"
+
+        "github.com/google/uuid"
+        _ "github.com/lib/pq"
+)
+
+var _ shop.Repository = &amp;DatabaseRepo{}
+
+type DatabaseRepo struct {
+        db *sql.DB
+}
+
+func New(config *config.Config) (*DatabaseRepo, error) <span class="cov0" title="0">{
+        db, err := sql.Open("postgres", config.DatabaseURL())
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("open connection: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">err = db.Ping()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("ping database: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return &amp;DatabaseRepo{db: db}, nil</span>
+}
+
+func (r *DatabaseRepo) Connection() *sql.DB <span class="cov0" title="0">{
+        return r.db
+}</span>
+
+func (r *DatabaseRepo) BuyProduct(ctx context.Context, userID uuid.UUID, item string) error <span class="cov0" title="0">{
+        tx, err := r.db.BeginTx(ctx, &amp;sql.TxOptions{
+                Isolation: sql.LevelSerializable,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("create transaction: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer tx.Rollback()
+
+        var product shop.Product
+
+        err = tx.QueryRowContext(ctx,
+                "SELECT id, price FROM shop.products WHERE title = $1",
+                item,
+        ).Scan(&amp;product.ID, &amp;product.Price)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("get product data: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">_, err = tx.ExecContext(ctx,
+                "UPDATE shop.users SET coins = coins - $1 WHERE id = $2",
+                product.Price, userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("update buyer balance: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">_, err = tx.ExecContext(ctx,
+                `INSERT INTO shop.inventory (holder, product)
+                 VALUES ($1, $2)
+                 ON CONFLICT (holder, product) DO UPDATE
+         SET amount = shop.inventory.amount + 1`,
+                userID, product.ID)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("update buyer inventory: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">err = tx.Commit()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("commit transaction: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (r *DatabaseRepo) SendCoin(ctx context.Context, transfer shop.Transfer) error <span class="cov0" title="0">{
+        tx, err := r.db.BeginTx(ctx, &amp;sql.TxOptions{
+                Isolation: sql.LevelSerializable,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("create transaction: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer tx.Rollback()
+
+        var balance uint64
+
+        err = tx.QueryRowContext(ctx,
+                "SELECT coins FROM shop.users WHERE id = $1",
+                transfer.Sender,
+        ).Scan(&amp;balance)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("get sender balance: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if balance &lt; transfer.Amount </span><span class="cov0" title="0">{
+                return me.ErrLowBalance
+        }</span>
+
+        <span class="cov0" title="0">_, err = tx.ExecContext(ctx,
+                "UPDATE shop.users SET coins = coins - $1 WHERE id = $2",
+                transfer.Amount, transfer.Sender)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("update sender balance: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">_, err = tx.ExecContext(ctx,
+                "UPDATE shop.users SET coins = coins + $1 WHERE id = $2",
+                transfer.Amount, transfer.Receiver)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("update receiver balance: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">_, err = tx.ExecContext(ctx,
+                "INSERT INTO shop.transfers VALUES (DEFAULT, $1, $2, $3)",
+                transfer.Sender, transfer.Receiver, transfer.Amount)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("add transfer record: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">err = tx.Commit()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("commit transaction: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (r *DatabaseRepo) UserInfo(ctx context.Context, userID uuid.UUID) (*shop.User, error) <span class="cov0" title="0">{
+        row := r.db.QueryRowContext(ctx,
+                `SELECT u.coins, 
+                        COALESCE(
+                                        (SELECT jsonb_agg(jsonb_build_object('type', p.title, 'quantity', i.amount))
+                                           FROM shop.inventory i
+                                           JOIN shop.products p ON i.product = p.id
+                                          WHERE i.holder = u.id), 
+                                        '[]'::jsonb
+                        ) AS inventory, 
+                        COALESCE(
+                                (SELECT jsonb_agg(jsonb_build_object('fromUser', sender, 'amount', amount)) 
+                                   FROM shop.transfers 
+                                  WHERE receiver = u.id), 
+                                '[]'::jsonb
+                        ) AS received,
+                        COALESCE(
+                                (SELECT jsonb_agg(jsonb_build_object('toUser', receiver, 'amount', amount)) 
+                                   FROM shop.transfers 
+                                  WHERE sender = u.id), 
+                                '[]'::jsonb
+                        ) AS sent
+                FROM shop.users u
+                WHERE u.id = $1`, userID)
+
+        var user shop.User
+
+        err := row.Scan(
+                &amp;user.Coins, &amp;user.Inventory,
+                &amp;user.CoinHistory.Received, &amp;user.CoinHistory.Sent)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("get user info: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return &amp;user, nil</span>
+}
+
+func (r *DatabaseRepo) AddUser(ctx context.Context, data auth.LoginData) (uuid.UUID, error) <span class="cov0" title="0">{
+        hashedPassword := base64.StdEncoding.EncodeToString(
+                pbkdf2.Key([]byte(data.Password), []byte(data.Username), 10000, 32, sha256.New))
+
+        row := r.db.QueryRowContext(ctx,
+                `INSERT INTO shop.users (username, hashed_password) 
+                 VALUES ($1, $2) RETURNING id`,
+                data.Username, hashedPassword)
+
+        var id uuid.UUID
+
+        err := row.Scan(&amp;id)
+        if err != nil </span><span class="cov0" title="0">{
+                return uuid.Nil, fmt.Errorf("get created user id: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return id, nil</span>
+}
+
+func (r *DatabaseRepo) HasUser(ctx context.Context, data auth.LoginData) (uuid.UUID, bool, error) <span class="cov0" title="0">{
+        row := r.db.QueryRowContext(ctx,
+                `SELECT id, hashed_password, username 
+                   FROM shop.users 
+                  WHERE username = $1 LIMIT 1`,
+                data.Username)
+
+        var (
+                id       uuid.UUID
+                password string
+                username string
+        )
+
+        err := row.Scan(&amp;id, &amp;password, &amp;username)
+        if err != nil </span><span class="cov0" title="0">{
+                if errors.Is(err, sql.ErrNoRows) </span><span class="cov0" title="0">{
+                        return uuid.Nil, false, nil
+                }</span>
+
+                <span class="cov0" title="0">return uuid.Nil, false, fmt.Errorf("get user id: %w", err)</span>
+        }
+
+        <span class="cov0" title="0">input := base64.StdEncoding.EncodeToString(
+                pbkdf2.Key([]byte(data.Password), []byte(username), 10000, 32, sha256.New))
+        if input != password </span><span class="cov0" title="0">{
+                return uuid.Nil, false, me.ErrInvalidPassword
+        }</span>
+
+        <span class="cov0" title="0">return id, true, nil</span>
+}
+
+func (r *DatabaseRepo) HasUserID(ctx context.Context, userID uuid.UUID) (bool, error) <span class="cov0" title="0">{
+        row := r.db.QueryRowContext(ctx,
+                `SELECT EXISTS(
+                        SELECT 1 
+                          FROM shop.users 
+                         WHERE id = $1
+                )`, userID)
+
+        var ok bool
+
+        err := row.Scan(&amp;ok)
+        if err != nil </span><span class="cov0" title="0">{
+                return false, fmt.Errorf("get user presence: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return ok, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package migrations
+
+import (
+        "database/sql"
+
+        _ "github.com/lib/pq"
+        "github.com/pressly/goose/v3"
+)
+
+func Up(db *sql.DB) error <span class="cov0" title="0">{
+        err := goose.SetDialect("postgres")
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">err = goose.Up(db, "migrations")
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func Down(db *sql.DB) error <span class="cov0" title="0">{
+        err := goose.SetDialect("postgres")
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">err = goose.Down(db, "migrations")
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package myerrors
+
+import (
+        "errors"
+        "net/http"
+
+        "github.com/go-chi/render"
+)
+
+var (
+        UnknownError = ErrorMessage{Text: "unknown error type"}
+
+        ErrLowBalance      = errors.New("not enough balance for the operation")
+        ErrInvalidPassword = errors.New("invalid user password")
+        ErrInvalidSender   = errors.New("non-empty sender value")
+        ErrNullAmount      = errors.New("null amount value")
+        ErrEmptyReceiver   = errors.New("empty receiver value")
+)
+
+type ErrorMessage struct {
+        Text string `json:"errors"`
+}
+
+func New(v any) ErrorMessage <span class="cov8" title="1">{
+        switch value := v.(type) </span>{
+        case string:<span class="cov8" title="1">
+                return ErrorMessage{Text: value}</span>
+        case error:<span class="cov8" title="1">
+                return ErrorMessage{Text: value.Error()}</span>
+        default:<span class="cov8" title="1">
+                return UnknownError</span>
+        }
+}
+
+func Error(w http.ResponseWriter, r *http.Request, response any, status int) <span class="cov8" title="1">{
+        render.Status(r, status)
+        render.JSON(w, r, New(response))
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package shop
+
+import (
+        "context"
+        "encoding/json"
+        "errors"
+        "fmt"
+        "net/http"
+        "time"
+
+        "github.com/go-chi/chi/v5"
+        "github.com/go-chi/render"
+
+        "github.com/imotkin/avito-task/internal/auth"
+        me "github.com/imotkin/avito-task/internal/myerrors"
+)
+
+var timeout = time.Second * 3
+
+func (s *Service) Authorize(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        var data auth.LoginData
+
+        err := json.NewDecoder(r.Body).Decode(&amp;data)
+        if err != nil </span><span class="cov8" title="1">{
+                me.Error(w, r, "invalid JSON", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if data.Username == "" </span><span class="cov8" title="1">{
+                me.Error(w, r, "empty username", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if data.Password == "" </span><span class="cov8" title="1">{
+                me.Error(w, r, "empty password", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov8" title="1">ctx, cancel := context.WithTimeout(r.Context(), timeout)
+        defer cancel()
+
+        id, ok, err := s.repo.HasUser(ctx, data)
+        if err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, me.ErrInvalidPassword) </span><span class="cov8" title="1">{
+                        me.Error(w, r, "invalid user password", http.StatusBadRequest)
+                        return
+                }</span>
+
+                <span class="cov0" title="0">me.Error(w, r, "failed to check user data", http.StatusInternalServerError)
+                return</span>
+        }
+
+        <span class="cov8" title="1">if !ok </span><span class="cov8" title="1">{
+                id, err = s.repo.AddUser(ctx, data)
+                if err != nil </span><span class="cov0" title="0">{
+                        me.Error(w, r, "failed to create a new user", http.StatusInternalServerError)
+                        return
+                }</span>
+        }
+        <span class="cov8" title="1">fmt.Println("Attempting to create token with id:", id, "and username:", data.Username)
+        fmt.Printf("%+v", s)
+
+        token, err := s.auth.CreateToken(id, data.Username)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, "failed to create JWT token", http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov8" title="1">render.Status(r, http.StatusOK)
+        render.JSON(w, r, token)</span>
+}
+
+func (s *Service) UserInfo(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        id, err := s.auth.ParseToken(r)
+        if err != nil </span><span class="cov8" title="1">{
+                me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(r.Context(), timeout)
+        defer cancel()
+
+        user, err := s.repo.UserInfo(ctx, id)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, "failed to get user info", http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov0" title="0">render.Status(r, http.StatusOK)
+        render.JSON(w, r, user)</span>
+}
+
+func (s *Service) BuyProduct(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        item := chi.URLParam(r, "item")
+
+        if item == "" </span><span class="cov0" title="0">{
+                me.Error(w, r, "empty item name", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">if !IsProduct(item) </span><span class="cov0" title="0">{
+                me.Error(w, r, "invalid item name", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">id, err := s.auth.ParseToken(r)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(r.Context(), timeout)
+        defer cancel()
+
+        err = s.repo.BuyProduct(ctx, id, item)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, err, http.StatusInternalServerError)
+                return
+        }</span>
+
+        <span class="cov0" title="0">render.Status(r, http.StatusOK)</span>
+}
+
+func (s *Service) SendCoin(w http.ResponseWriter, r *http.Request) <span class="cov0" title="0">{
+        senderID, err := s.auth.ParseToken(r)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, "invalid JWT token", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">var transfer Transfer
+
+        err = render.DecodeJSON(r.Body, &amp;transfer)
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, "invalid JSON", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">err = transfer.Valid()
+        if err != nil </span><span class="cov0" title="0">{
+                me.Error(w, r, err, http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(r.Context(), timeout)
+        defer cancel()
+
+        ok, err := s.repo.HasUserID(ctx, transfer.Receiver)
+        if err != nil || !ok </span><span class="cov0" title="0">{
+                me.Error(w, r, "sender is not found", http.StatusBadRequest)
+                return
+        }</span>
+
+        <span class="cov0" title="0">err = s.repo.SendCoin(ctx, Transfer{
+                Sender:   senderID,
+                Receiver: transfer.Receiver,
+                Amount:   transfer.Amount,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                if errors.Is(err, me.ErrLowBalance) </span><span class="cov0" title="0">{
+                        me.Error(w, r, err, http.StatusBadRequest)
+                        return
+                }</span>
+
+                <span class="cov0" title="0">me.Error(w, r, err, http.StatusInternalServerError)
+                return</span>
+        }
+
+        <span class="cov0" title="0">render.Status(r, http.StatusOK)</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package shop
+
+type ProductType int
+
+const (
+        ProductTShirt ProductType = iota + 1
+        ProductCup
+        ProductBook
+        ProductPen
+        ProductPowerbank
+        ProductHoody
+        ProductUmbrella
+        ProductSocks
+        ProductWallet
+        ProductPinkHoody
+)
+
+var names = [...]string{
+        "t-shirt",
+        "cup",
+        "book",
+        "pen",
+        "powerbank",
+        "hoody",
+        "umbrella",
+        "socks",
+        "wallet",
+        "pink-hoody",
+}
+
+var products map[string]struct{}
+
+func init() <span class="cov8" title="1">{
+        products = make(map[string]struct{}, len(names))
+        for _, name := range names </span><span class="cov8" title="1">{
+                products[name] = struct{}{}
+        }</span>
+}
+
+func IsProduct(product string) bool <span class="cov8" title="1">{
+        _, ok := products[product]
+        return ok
+}</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package shop
+
+import (
+        "context"
+        "encoding/json"
+        "log/slog"
+
+        "github.com/google/uuid"
+        "github.com/imotkin/avito-task/internal/auth"
+        me "github.com/imotkin/avito-task/internal/myerrors"
+)
+
+type Service struct {
+        logger *slog.Logger
+        repo   Repository
+        auth   auth.Authorizer
+}
+
+func NewService(repo Repository, auth auth.Authorizer, logger *slog.Logger) *Service <span class="cov8" title="1">{
+        return &amp;Service{repo: repo, auth: auth, logger: logger}
+}</span>
+
+type Repository interface {
+        BuyProduct(ctx context.Context, userID uuid.UUID, item string) error
+        SendCoin(ctx context.Context, transfer Transfer) error
+        UserInfo(ctx context.Context, userID uuid.UUID) (*User, error)
+
+        AddUser(ctx context.Context, data auth.LoginData) (uuid.UUID, error)
+        HasUser(ctx context.Context, data auth.LoginData) (uuid.UUID, bool, error)
+        HasUserID(ctx context.Context, userID uuid.UUID) (bool, error)
+}
+
+type Product struct {
+        ID    int
+        Title string
+        Price uint64
+}
+
+type User struct {
+        ID          uuid.UUID       `json:"-"`
+        Name        string          `json:"-"`
+        Coins       uint64          `json:"coins"`
+        Inventory   json.RawMessage `json:"inventory"`
+        CoinHistory History         `json:"coinHistory"`
+}
+
+type Transfer struct {
+        Sender   uuid.UUID `json:"fromUser"`
+        Receiver uuid.UUID `json:"toUser"`
+        Amount   uint64    `json:"amount"`
+}
+
+func (t Transfer) Valid() error <span class="cov8" title="1">{
+        switch </span>{
+        case t.Receiver == uuid.Nil:<span class="cov8" title="1">
+                return me.ErrEmptyReceiver</span>
+        case t.Amount == 0:<span class="cov8" title="1">
+                return me.ErrNullAmount</span>
+        case t.Sender != uuid.Nil:<span class="cov8" title="1">
+                return me.ErrInvalidSender</span>
+        default:<span class="cov8" title="1">
+                return nil</span>
+        }
+}
+
+type Item struct {
+        Type     string `json:"type"`
+        Quantity uint64 `json:"quantity"`
+}
+
+type History struct {
+        Received json.RawMessage `json:"received"`
+        Sent     json.RawMessage `json:"sent"`
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

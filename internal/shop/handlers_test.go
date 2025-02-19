@@ -3,6 +3,7 @@ package shop
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -57,6 +58,18 @@ func (m *MockAuth) CreateToken(id uuid.UUID, name string) (*auth.Token, error) {
 func (m *MockAuth) ParseToken(r *http.Request) (uuid.UUID, error) {
 	args := m.Called(r)
 	return args.Get(0).(uuid.UUID), args.Error(1)
+}
+
+func NewTestRequest(
+	method string, target string, body io.Reader, headers map[string]string,
+) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	return req
 }
 
 func TestAuthorize(t *testing.T) {
@@ -145,6 +158,76 @@ func TestAuthorize(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			service.Authorize(rec, req)
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.status, resp.StatusCode)
+
+			assert.JSONEq(t, tt.response, rec.Body.String())
+
+			mockRepo.AssertExpectations(t)
+			mockAuth.AssertExpectations(t)
+		})
+	}
+}
+
+func TestUserInfo(t *testing.T) {
+	mockRepo := new(MockRepository)
+	mockAuth := new(MockAuth)
+
+	service := NewService(mockRepo, mockAuth, nil)
+
+	tests := []struct {
+		name     string
+		request  *http.Request
+		status   int
+		response string
+		fn       func()
+	}{
+		{
+			name: "Invalid JWT token",
+			request: NewTestRequest(http.MethodGet, "/api/info", nil, map[string]string{
+				"Authorization": "Bearer invalid-token",
+			}),
+			status:   http.StatusBadRequest,
+			response: `{"errors": "invalid JWT token"}`,
+			fn: func() {
+				mockAuth.On("ParseToken", mock.Anything).
+					Return(uuid.Nil, auth.ErrTokenNotFound).
+					Once()
+			},
+		},
+		// TODO: add token creation
+		// {
+		// 	name: "Invalid user id",
+		// 	request: NewTestRequest(http.MethodGet, "/api/info", nil, map[string]string{
+		// 		"Authorization": "Bearer",
+		// 	}),
+		// 	status:   http.StatusInternalServerError,
+		// 	response: `{"errors": "failed to get user info"}`,
+		// 	fn: func() {
+		// 		id := uuid.New()
+
+		// 		mockAuth.On("ParseToken", mock.Anything).
+		// 			Return(id, nil).
+		// 			Once()
+
+		// 		mockRepo.On("UserInfo", mock.Anything, id).
+		// 			Return(nil, errors.New("")).
+		// 			Once()
+		// 	},
+		// },
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.fn != nil {
+				tt.fn()
+			}
+
+			rec := httptest.NewRecorder()
+			service.UserInfo(rec, tt.request)
 
 			resp := rec.Result()
 			defer resp.Body.Close()
