@@ -8,162 +8,206 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
-	"time"
 
 	"github.com/imotkin/avito-task/internal/auth"
+	"github.com/imotkin/avito-task/internal/config"
+	"github.com/imotkin/avito-task/internal/migrations"
 	"github.com/imotkin/avito-task/internal/shop"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
-	testDBUser     = "postgres"
-	testDBPassword = "password"
-	testDBName     = "test_shop"
-)
-
 func setupTestContainers(t *testing.T) (string, func()) {
+	config := &config.Config{
+		User:       "postgres",
+		Password:   "postgres",
+		Database:   "shop",
+		ServerPort: "8080",
+	}
+
 	ctx := context.Background()
 
+	network, err := network.New(ctx)
+	require.NoError(t, err)
+
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:15",
+		Image:        "postgres:17",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_USER":     testDBUser,
-			"POSTGRES_PASSWORD": testDBPassword,
-			"POSTGRES_DB":       testDBName,
+			"POSTGRES_USER":     config.User,
+			"POSTGRES_PASSWORD": config.Password,
+			"POSTGRES_DB":       config.Database,
 		},
-		WaitingFor: wait.ForListeningPort("5432/tcp"),
+		WaitingFor:     wait.ForListeningPort("5432/tcp"),
+		Networks:       []string{network.Name},
+		NetworkAliases: map[string][]string{"postgres": {"db-alias"}},
 	}
-	dbContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	assert.NoError(t, err)
 
-	dbHost, err := dbContainer.Host(ctx)
-	assert.NoError(t, err)
-	dbPort, err := dbContainer.MappedPort(ctx, "5432")
-	assert.NoError(t, err)
-
-	dbConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		testDBUser, testDBPassword, dbHost, dbPort.Port(), testDBName,
+	dbContainer, err := testcontainers.GenericContainer(ctx,
+		testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		},
 	)
 
-	db, err := sql.Open("postgres", dbConnStr)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+
+	dbHost, err := dbContainer.Host(ctx)
+	require.NoError(t, err)
+
+	dbPort, err := dbContainer.MappedPort(ctx, "5432")
+	require.NoError(t, err)
+
+	config.Host = dbHost
+	config.Port = dbPort.Port()
+
+	db, err := sql.Open("postgres", config.DatabaseURL())
+	require.NoError(t, err)
 	defer db.Close()
 
 	err = db.Ping()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+
+	err = migrations.Up(db, "../../migrations")
+	require.NoError(t, err)
+
+	fmt.Printf("%+v\n", config)
 
 	appReq := testcontainers.ContainerRequest{
-		Image:        "avito-shop",
+		Image:        "avito-task-avito-shop-service",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
-			"DATABASE_USER":     testDBUser,
-			"DATABASE_PASSWORD": testDBPassword,
-			"DATABASE_HOST":     dbHost,
-			"DATABASE_PORT":     dbPort.Port(),
-			"DATABASE_NAME":     testDBName,
+			"DATABASE_USER":     config.User,
+			"DATABASE_PASSWORD": config.Password,
+			"DATABASE_HOST":     "host.docker.internal",
+			"DATABASE_PORT":     config.Port,
+			"DATABASE_NAME":     config.Database,
+			"SERVER_PORT":       config.ServerPort,
 		},
-		WaitingFor: wait.ForListeningPort("8080/tcp"),
+		WaitingFor: wait.ForLog("Started HTTP server"),
+		Networks:   []string{network.Name},
 	}
-	appContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: appReq,
-		Started:          true,
-	})
-	assert.NoError(t, err)
+
+	appContainer, err := testcontainers.GenericContainer(ctx,
+		testcontainers.GenericContainerRequest{
+			ContainerRequest: appReq,
+			Started:          true,
+		},
+	)
+
+	require.NoError(t, err)
+
+	logs, _ := appContainer.Logs(ctx)
+	io.Copy(os.Stdout, logs)
 
 	appHost, err := appContainer.Host(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+
 	appPort, err := appContainer.MappedPort(ctx, "8080")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	baseURL := fmt.Sprintf("http://%s:%s", appHost, appPort.Port())
 
 	return baseURL, func() {
+		migrations.Down(db, "../../migrations")
 		dbContainer.Terminate(ctx)
 		appContainer.Terminate(ctx)
 	}
 }
 
-func TestIntegration_BuyProduct(t *testing.T) {
+func TestIntegrationBuyProduct(t *testing.T) {
 	baseURL, cleanup := setupTestContainers(t)
 	defer cleanup()
 
-	time.Sleep(2 * time.Second)
+	token := createUser(t, baseURL)
 
-	tokenJSON := createUser(t, baseURL)
+	buyProduct(t, baseURL, token, "t-shirt")
 
-	var token auth.Token
+	user := getUser(t, baseURL, token)
 
-	err := json.NewDecoder(bytes.NewBufferString(tokenJSON)).Decode(&token)
-	assert.Nil(t, err)
+	require.Equal(t, uint64(920), user.Coins)
 
-	buyProduct(t, baseURL, token.Token, "t-shirt")
+	var items []shop.Item
 
-	user := getUser(t, baseURL, token.Token)
+	err := json.Unmarshal(user.Inventory, &items)
+	require.NoError(t, err)
 
-	assert.Equal(t, 920, user.Coins)
-	assert.Contains(t, user.Inventory, "t-shirt")
+	var ok bool
+
+	for _, item := range items {
+		if item.Type == "t-shirt" {
+			ok = true
+			break
+		}
+	}
+
+	require.True(t, ok)
 }
 
 func createUser(t *testing.T, URL string) string {
-	endpoint := URL + "/api/auth/"
+	endpoint := URL + "/api/auth"
 
 	body := bytes.NewBufferString(
 		`{"username": "ilya", "password": "secret"}`,
 	)
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, body)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
-	assert.Nil(t, err)
+	var token auth.Token
 
-	return string(b)
+	err = json.NewDecoder(resp.Body).Decode(&token)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, token.Token)
+
+	return token.Token
 }
 
 func buyProduct(t *testing.T, URL, token, product string) {
 	endpoint := URL + "/api/buy/" + product
 
-	req, err := http.NewRequest(http.MethodPost, endpoint, nil)
-	assert.Nil(t, err)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	require.NoError(t, err)
 
-	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Add("Authorization", ("Bearer " + token))
 
 	resp, err := http.DefaultClient.Do(req)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func getUser(t *testing.T, URL, token string) (user *shop.User) {
+func getUser(t *testing.T, URL, token string) *shop.User {
 	endpoint := URL + "/api/info"
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Add("Authorization", ("Bearer " + token))
 
 	resp, err := http.DefaultClient.Do(req)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	json.NewDecoder(resp.Body).Decode(user)
-	assert.Nil(t, err)
+	var user shop.User
 
-	return
+	err = json.NewDecoder(resp.Body).Decode(&user)
+	require.NoError(t, err)
+
+	return &user
 }

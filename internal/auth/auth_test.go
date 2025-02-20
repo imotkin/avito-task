@@ -55,7 +55,7 @@ func TestParseToken(t *testing.T) {
 					"username": "ilya",
 					"exp":      time.Now().Add(time.Hour * 24).Unix(),
 				})
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 
 				ctx := jwtauth.NewContext(context.Background(), token, nil)
 
@@ -81,7 +81,7 @@ func TestParseToken(t *testing.T) {
 					"username": "ilya",
 					"exp":      time.Now().Add(time.Hour * 24).Unix(),
 				})
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 
 				ctx := jwtauth.NewContext(context.Background(), token, nil)
 
@@ -100,7 +100,7 @@ func TestParseToken(t *testing.T) {
 					"username": "ilya",
 					"exp":      time.Now().Add(time.Hour * 24).Unix(),
 				})
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 
 				ctx := jwtauth.NewContext(context.Background(), token, nil)
 
