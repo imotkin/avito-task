@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -57,8 +56,6 @@ func (s *Service) Authorize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	fmt.Println("Attempting to create token with id:", id, "and username:", data.Username)
-	fmt.Printf("%+v", s)
 
 	token, err := s.auth.CreateToken(id, data.Username)
 	if err != nil {
