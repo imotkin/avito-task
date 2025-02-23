@@ -29,7 +29,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func setupTestContainers(t *testing.T) (string, func()) {
+var (
+	baseURL string
+)
+
+func setupTestContainers(t *testing.T) func() {
 	config := &config.Config{
 		User:       "postgres",
 		Password:   "postgres",
@@ -85,8 +89,6 @@ func setupTestContainers(t *testing.T) (string, func()) {
 	err = migrations.Up(db, "../../migrations")
 	require.NoError(t, err)
 
-	fmt.Printf("%+v\n", config)
-
 	appReq := testcontainers.ContainerRequest{
 		Image:        "avito-task-avito-shop-service",
 		ExposedPorts: []string{"8080/tcp"},
@@ -120,9 +122,9 @@ func setupTestContainers(t *testing.T) (string, func()) {
 	appPort, err := appContainer.MappedPort(ctx, "8080")
 	require.NoError(t, err)
 
-	baseURL := fmt.Sprintf("http://%s:%s", appHost, appPort.Port())
+	baseURL = fmt.Sprintf("http://%s:%s", appHost, appPort.Port())
 
-	return baseURL, func() {
+	return func() {
 		migrations.Down(db, "../../migrations")
 		dbContainer.Terminate(ctx)
 		appContainer.Terminate(ctx)
@@ -130,14 +132,14 @@ func setupTestContainers(t *testing.T) (string, func()) {
 }
 
 func TestIntegrationBuyProduct(t *testing.T) {
-	baseURL, cleanup := setupTestContainers(t)
+	cleanup := setupTestContainers(t)
 	defer cleanup()
 
-	token := createUser(t, baseURL)
+	token := createUser(t)
 
-	buyProduct(t, baseURL, token, "t-shirt")
+	buyProduct(t, token, "t-shirt")
 
-	user := getUser(t, baseURL, token)
+	user := getUser(t, token)
 
 	require.Equal(t, uint64(920), user.Coins)
 
@@ -152,13 +154,13 @@ func TestIntegrationBuyProduct(t *testing.T) {
 }
 
 func TestIntegrationSendCoin(t *testing.T) {
-	baseURL, cleanup := setupTestContainers(t)
+	cleanup := setupTestContainers(t)
 	defer cleanup()
 
 	tokenAuth := jwtauth.New("HS256", []byte("secret"), nil)
 
-	tokenSender := createUser(t, baseURL)
-	tokenReciever := createUser(t, baseURL)
+	tokenSender := createUser(t)
+	tokenReciever := createUser(t)
 
 	tokenDecoded, err := tokenAuth.Decode(tokenReciever)
 	require.NoError(t, err)
@@ -177,9 +179,9 @@ func TestIntegrationSendCoin(t *testing.T) {
 		Amount:   100,
 	}
 
-	sendCoin(t, baseURL, tokenSender, sentTransfer)
+	sendCoin(t, tokenSender, sentTransfer)
 
-	user := getUser(t, baseURL, tokenSender)
+	user := getUser(t, tokenSender)
 
 	var sent []shop.Transfer
 
@@ -191,8 +193,8 @@ func TestIntegrationSendCoin(t *testing.T) {
 	}))
 }
 
-func createUser(t *testing.T, URL string) string {
-	endpoint := URL + "/api/auth"
+func createUser(t *testing.T) string {
+	endpoint := baseURL + "/api/auth"
 
 	body := bytes.NewBufferString(
 		`{"username": "ilya", "password": "secret"}`,
@@ -215,8 +217,8 @@ func createUser(t *testing.T, URL string) string {
 	return token.Token
 }
 
-func sendCoin(t *testing.T, URL, token string, transfer shop.Transfer) {
-	endpoint := URL + "/api/sendCoin"
+func sendCoin(t *testing.T, token string, transfer shop.Transfer) {
+	endpoint := baseURL + "/api/sendCoin"
 
 	payload, err := json.Marshal(transfer)
 	require.NoError(t, err)
@@ -233,8 +235,8 @@ func sendCoin(t *testing.T, URL, token string, transfer shop.Transfer) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func buyProduct(t *testing.T, URL, token, product string) {
-	endpoint := URL + "/api/buy/" + product
+func buyProduct(t *testing.T, token, product string) {
+	endpoint := baseURL + "/api/buy/" + product
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	require.NoError(t, err)
@@ -248,8 +250,8 @@ func buyProduct(t *testing.T, URL, token, product string) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func getUser(t *testing.T, URL, token string) *shop.User {
-	endpoint := URL + "/api/info"
+func getUser(t *testing.T, token string) *shop.User {
+	endpoint := baseURL + "/api/info"
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	require.NoError(t, err)

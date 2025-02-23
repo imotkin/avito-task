@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+
 	"github.com/imotkin/avito-task/internal/auth"
 	me "github.com/imotkin/avito-task/internal/myerrors"
 )

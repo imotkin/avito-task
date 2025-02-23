@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -10,43 +9,57 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/jwtauth/v5"
+	"github.com/go-chi/render"
 
 	"github.com/imotkin/avito-task/internal/auth"
 	"github.com/imotkin/avito-task/internal/config"
 	"github.com/imotkin/avito-task/internal/database"
 	"github.com/imotkin/avito-task/internal/migrations"
 	"github.com/imotkin/avito-task/internal/shop"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/jwtauth/v5"
-	"github.com/go-chi/render"
+	"github.com/joho/godotenv"
 )
 
-var (
-	logLevel = flag.String("logger", "error", "Set a necessary logger level: info, debug, warn, error")
-	levels   = map[string]slog.Level{
-		"debug": slog.LevelDebug,
-		"info":  slog.LevelInfo,
-		"warn":  slog.LevelWarn,
-		"error": slog.LevelError,
+func parseLevel(name string) (slog.Level, error) {
+	switch strings.ToLower(name) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, errors.New("invalid logging level")
 	}
-)
+}
 
 func main() {
 	flag.Parse()
 
-	level := cmp.Or(levels[*logLevel], slog.LevelError)
-
-	logger := slog.New(slog.NewTextHandler(
-		os.Stdout, &slog.HandlerOptions{
-			Level: level,
-		},
-	))
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Failed to load .env file, default settings were set")
+	}
 
 	cfg := config.Load()
+
+	level, err := parseLevel(cfg.Logging)
+	if err != nil {
+		log.Println("Failed to parse logging level, default level was set (info)")
+		level = slog.LevelInfo
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	}))
 
 	db, err := database.New(cfg)
 	if err != nil {
@@ -95,14 +108,14 @@ func main() {
 	done := make(chan bool, 1)
 
 	go func() {
-		log.Printf("Got signal: %v\n", <-sigs)
+		log.Printf("Got an interrupt signal: %v\n", <-sigs)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		err := server.Shutdown(ctx)
 		if err != nil {
-			log.Printf("Failed to shutdown HTTP server: %v", err)
+			log.Printf("Failed to shutdown HTTP server: %v\n", err)
 		}
 
 		log.Println("Server HTTP was closed")
@@ -111,7 +124,7 @@ func main() {
 	}()
 
 	go func() {
-		log.Printf("Started HTTP server at http://localhost%s", server.Addr)
+		log.Printf("Started HTTP server at http://localhost%s\n", server.Addr)
 
 		err = server.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {

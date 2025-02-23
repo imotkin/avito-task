@@ -13,6 +13,7 @@ type Config struct {
 	Port       string
 	Database   string
 	ServerPort string
+	Logging    string
 }
 
 func (c *Config) DatabaseURL() string {
