@@ -17,13 +17,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/go-chi/render"
+	"github.com/joho/godotenv"
 
 	"github.com/imotkin/avito-task/internal/auth"
 	"github.com/imotkin/avito-task/internal/config"
 	"github.com/imotkin/avito-task/internal/database"
 	"github.com/imotkin/avito-task/internal/migrations"
 	"github.com/imotkin/avito-task/internal/shop"
-	"github.com/joho/godotenv"
 )
 
 func parseLevel(name string) (slog.Level, error) {
