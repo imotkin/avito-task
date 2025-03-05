@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - go build ./...
+    silent: true
+  test:
+    cmds:
+      - go test ./...
+    silent: true
+  unit-test:
+    cmds:
+      - go test -skip Integration ./internal/...
+    silent: true
+  integration-test:
+    cmds:
+      - go test -run Integration ./internal/...
+    silent: true
+  start:
+    cmds:
+      - docker compose up -d --build
+    silent: true
