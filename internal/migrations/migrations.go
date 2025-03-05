@@ -2,7 +2,7 @@ package migrations
 
 import (
 	"database/sql"
-	"errors"
+	"fmt"
 
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
@@ -14,15 +14,9 @@ func Up(db *sql.DB, dir ...string) error {
 		return err
 	}
 
-	var path string
-
-	switch len(dir) {
-	case 0:
-		path = "migrations"
-	case 1:
-		path = dir[0]
-	default:
-		return errors.New("too many args")
+	path, err := parseArgs(dir...)
+	if err != nil {
+		return fmt.Errorf("up migrations: %w", err)
 	}
 
 	err = goose.Up(db, path)
@@ -39,15 +33,9 @@ func Down(db *sql.DB, dir ...string) error {
 		return err
 	}
 
-	var path string
-
-	switch len(dir) {
-	case 0:
-		path = "migrations"
-	case 1:
-		path = dir[0]
-	default:
-		return errors.New("too many args")
+	path, err := parseArgs(dir...)
+	if err != nil {
+		return fmt.Errorf("down migrations: %w", err)
 	}
 
 	err = goose.Down(db, path)
@@ -56,4 +44,15 @@ func Down(db *sql.DB, dir ...string) error {
 	}
 
 	return nil
+}
+
+func parseArgs(args ...string) (string, error) {
+	switch len(args) {
+	case 0:
+		return "migrations", nil
+	case 1:
+		return args[0], nil
+	default:
+		return "", fmt.Errorf("invalid dir args: %d items", len(args))
+	}
 }
