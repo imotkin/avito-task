@@ -18,6 +18,10 @@ type Service struct {
 }
 
 func NewService(repo Repository, auth auth.Authorizer, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Service{repo: repo, auth: auth, logger: logger}
 }
 
