@@ -53,7 +53,7 @@ func main() {
 
 	level, err := parseLevel(cfg.Logging)
 	if err != nil {
-		log.Println("Failed to parse logging level, default level was set (info)")
+		log.Println("Failed to parse logging level, info level was set")
 		level = slog.LevelInfo
 	}
 
