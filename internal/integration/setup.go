@@ -7,12 +7,12 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/imotkin/avito-task/internal/config"
 	"github.com/imotkin/avito-task/internal/migrations"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -25,6 +25,8 @@ var (
 
 func setupTestContainers(t *testing.T) func() {
 	config := &config.Config{
+		Host:       "postgres",
+		Port:       "5432",
 		User:       "postgres",
 		Password:   "postgres",
 		Database:   "shop",
@@ -33,7 +35,15 @@ func setupTestContainers(t *testing.T) func() {
 
 	ctx := context.Background()
 
-	network, err := network.New(ctx)
+	err := exec.Command("docker", "info").Run()
+	if err != nil {
+		t.Fatalf("Docker isn't started: %v", err)
+	}
+
+	network, err := network.New(ctx,
+		network.WithDriver("bridge"),
+		network.WithAttachable(),
+	)
 	require.NoError(t, err)
 
 	req := testcontainers.ContainerRequest{
@@ -46,9 +56,7 @@ func setupTestContainers(t *testing.T) func() {
 		},
 		WaitingFor: wait.ForListeningPort("5432/tcp"),
 		Networks:   []string{network.Name},
-		HostConfigModifier: func(hc *container.HostConfig) {
-			hc.NetworkMode = testcontainers.Bridge
-		},
+		Hostname:   "postgres",
 	}
 
 	dbContainer, err := testcontainers.GenericContainer(ctx,
@@ -85,8 +93,8 @@ func setupTestContainers(t *testing.T) func() {
 		Env: map[string]string{
 			"DATABASE_USER":     config.User,
 			"DATABASE_PASSWORD": config.Password,
-			"DATABASE_HOST":     "host.docker.internal",
-			"DATABASE_PORT":     config.Port,
+			"DATABASE_HOST":     "postgres", // nit: service and db containers are in the same newtork, so it's necessary to use hostname instead of external host and default port for PostgreSQL: 5432. Another alternative to use a detached container for database migrations, but that seems too wasteful
+			"DATABASE_PORT":     "5432",
 			"DATABASE_NAME":     config.Database,
 			"SERVER_PORT":       config.ServerPort,
 		},
@@ -101,10 +109,13 @@ func setupTestContainers(t *testing.T) func() {
 		},
 	)
 
-	require.NoError(t, err)
-
 	logs, _ := appContainer.Logs(ctx)
 	io.Copy(os.Stdout, logs)
+
+	require.NoError(t, err)
+
+	//logs, _ := appContainer.Logs(ctx)
+	//io.Copy(os.Stdout, logs)
 
 	appHost, err := appContainer.Host(ctx)
 	require.NoError(t, err)
@@ -128,6 +139,11 @@ func setupTestContainers(t *testing.T) func() {
 		err = appContainer.Terminate(ctx)
 		if err != nil {
 			log.Printf("Failed to stop app container: %v", err)
+		}
+
+		err = network.Remove(ctx)
+		if err != nil {
+			log.Printf("Failed to remove network: %s", err)
 		}
 	}
 }
