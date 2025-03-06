@@ -31,5 +31,6 @@ func Load() *Config {
 		Port:       cmp.Or(os.Getenv("DATABASE_PORT"), "5432"),
 		Database:   cmp.Or(os.Getenv("DATABASE_NAME"), "shop"),
 		ServerPort: cmp.Or(os.Getenv("SERVER_PORT"), "8080"),
+		Logging:    cmp.Or(os.Getenv("LOGGING_LEVEL"), "info"),
 	}
 }
