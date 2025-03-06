@@ -84,9 +84,6 @@ func setupTestContainers(t *testing.T) func() {
 	err = db.Ping()
 	require.NoError(t, err)
 
-	err = migrations.Up(db, "../../migrations")
-	require.NoError(t, err)
-
 	appReq := testcontainers.ContainerRequest{
 		Image:        "avito-task-avito-shop-service",
 		ExposedPorts: []string{"8080/tcp"},
@@ -113,9 +110,6 @@ func setupTestContainers(t *testing.T) func() {
 	io.Copy(os.Stdout, logs)
 
 	require.NoError(t, err)
-
-	//logs, _ := appContainer.Logs(ctx)
-	//io.Copy(os.Stdout, logs)
 
 	appHost, err := appContainer.Host(ctx)
 	require.NoError(t, err)
